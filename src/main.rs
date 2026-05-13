@@ -1,11 +1,11 @@
+mod api;
 mod cluster;
 mod error;
 mod kafka;
 mod state;
 mod topic;
-mod api;
 
-use axum::{routing::get, Router};
+use axum::Router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
@@ -18,7 +18,7 @@ async fn main() {
     let state = AppState::new();
 
     let app = Router::new()
-        .route("/", get(|| async { "Hello, Kafka UI!" }))
+        .nest("/api", api::router())
         .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
