@@ -1,16 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getTopic, fetchMessages } from '../api/topics';
+
+type OffsetMode = 'latest' | 'earliest' | 'custom';
 
 export default function MessagePage() {
   const { clusterId, topicName } = useParams<{
     clusterId: string;
     topicName: string;
   }>();
-  const [partition, setPartition] = useState<number>(0);
-  const [offset, setOffset] = useState<number>(0);
+
+  const [partition, setPartition] = useState<number>(-1);
+  const [offsetMode, setOffsetMode] = useState<OffsetMode>('latest');
+  const [customOffset, setCustomOffset] = useState<number>(0);
   const [limit, setLimit] = useState<number>(100);
+
+  const offset = offsetMode === 'latest' ? -1 : offsetMode === 'earliest' ? -2 : customOffset;
 
   const { data: topic } = useQuery({
     queryKey: ['topic', clusterId, topicName],
@@ -32,6 +38,14 @@ export default function MessagePage() {
       }),
     enabled: false,
   });
+
+  // Auto-fetch on mount or when params change via refetch button
+  useEffect(() => {
+    if (clusterId && topicName) {
+      const timer = setTimeout(() => refetch(), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [clusterId, topicName]);
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
@@ -61,7 +75,7 @@ export default function MessagePage() {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
           {/* Partition */}
           <div>
             <label className="block text-xs text-slate-500 mb-2 font-mono-data uppercase tracking-wider">
@@ -73,6 +87,7 @@ export default function MessagePage() {
               onChange={(e) => setPartition(Number(e.target.value))}
               style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }}
             >
+              <option value={-1} className="bg-[#0a0e17] text-slate-200">All Partitions</option>
               {topic?.partitions.map((p) => (
                 <option key={p.id} value={p.id} className="bg-[#0a0e17] text-slate-200">
                   Partition {p.id}
@@ -83,18 +98,37 @@ export default function MessagePage() {
             </select>
           </div>
 
-          {/* Offset */}
+          {/* Offset Mode */}
           <div>
             <label className="block text-xs text-slate-500 mb-2 font-mono-data uppercase tracking-wider">
               Offset
             </label>
-            <input
-              className="terminal-input w-full rounded-xl px-4 py-3 text-sm"
-              type="number"
-              value={offset}
-              onChange={(e) => setOffset(Number(e.target.value))}
-            />
+            <select
+              className="terminal-input w-full rounded-xl px-4 py-3 text-sm appearance-none cursor-pointer"
+              value={offsetMode}
+              onChange={(e) => setOffsetMode(e.target.value as OffsetMode)}
+              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }}
+            >
+              <option value="latest" className="bg-[#0a0e17] text-slate-200">Newest</option>
+              <option value="earliest" className="bg-[#0a0e17] text-slate-200">Oldest</option>
+              <option value="custom" className="bg-[#0a0e17] text-slate-200">Custom</option>
+            </select>
           </div>
+
+          {/* Custom Offset */}
+          {offsetMode === 'custom' && (
+            <div>
+              <label className="block text-xs text-slate-500 mb-2 font-mono-data uppercase tracking-wider">
+                Custom Offset
+              </label>
+              <input
+                className="terminal-input w-full rounded-xl px-4 py-3 text-sm"
+                type="number"
+                value={customOffset}
+                onChange={(e) => setCustomOffset(Number(e.target.value))}
+              />
+            </div>
+          )}
 
           {/* Limit */}
           <div>
