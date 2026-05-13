@@ -1,0 +1,42 @@
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
+
+use crate::cluster::model::{Cluster, CreateClusterRequest};
+use crate::error::AppError;
+use crate::state::AppState;
+
+pub async fn list_clusters(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<Cluster>>, AppError> {
+    let clusters = state.clusters.read().await;
+    let list: Vec<Cluster> = clusters.values().cloned().collect();
+    Ok(Json(list))
+}
+
+pub async fn create_cluster(
+    State(state): State<AppState>,
+    Json(req): Json<CreateClusterRequest>,
+) -> Result<Json<Cluster>, AppError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let cluster = Cluster {
+        id: id.clone(),
+        name: req.name,
+        bootstrap_servers: req.bootstrap_servers,
+    };
+    state.clusters.write().await.insert(id, cluster.clone());
+    Ok(Json(cluster))
+}
+
+pub async fn delete_cluster(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let removed = state.clusters.write().await.remove(&id).is_some();
+    if !removed {
+        return Err(AppError::ClusterNotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
