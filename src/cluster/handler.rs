@@ -32,6 +32,7 @@ pub async fn create_cluster(
         bootstrap_servers: req.bootstrap_servers,
     };
     state.clusters.write().await.insert(id, cluster.clone());
+    let _ = state.save().await;
     Ok(Json(cluster))
 }
 
@@ -43,5 +44,6 @@ pub async fn delete_cluster(
     if !removed {
         return Err(AppError::ClusterNotFound);
     }
+    let _ = state.save().await;
     Ok(StatusCode::NO_CONTENT)
 }

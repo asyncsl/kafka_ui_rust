@@ -15,7 +15,7 @@ use crate::state::AppState;
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let state = AppState::new();
+    let state = AppState::new().await;
 
     let app = Router::new()
         .nest("/api", api::router())
