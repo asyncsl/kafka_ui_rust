@@ -1,9 +1,103 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getTopic, fetchMessages } from '../api/topics';
 
 type OffsetMode = 'latest' | 'earliest' | 'custom';
+
+interface MessageRecord {
+  partition: number;
+  offset: number;
+  key: string | null;
+  value: string | null;
+  timestamp: number | null;
+}
+
+function formatJson(value: string | null): string {
+  if (!value) return '';
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+}
+
+function MessageDetailModal({
+  message,
+  onClose,
+}: {
+  message: MessageRecord;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div
+        className="relative glass-panel rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col animate-fade-in-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+          <h3 className="font-display text-lg font-semibold text-slate-200">
+            Message Details
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto p-6 space-y-4">
+          {/* Meta */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Partition</div>
+              <div className="text-sm text-cyan-400 font-mono-data">{message.partition}</div>
+            </div>
+            <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Offset</div>
+              <div className="text-sm text-slate-200 font-mono-data">{message.offset}</div>
+            </div>
+            <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Timestamp</div>
+              <div className="text-sm text-slate-200 font-mono-data">
+                {message.timestamp ? new Date(message.timestamp).toLocaleString() : '—'}
+              </div>
+            </div>
+            <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Key</div>
+              <div className="text-sm text-amber-400/80 font-mono-data truncate">{message.key ?? 'null'}</div>
+            </div>
+          </div>
+
+          {/* Key */}
+          <div>
+            <div className="text-xs text-slate-500 uppercase tracking-wider font-mono-data mb-2">Key</div>
+            <pre className="bg-black/40 rounded-xl p-4 text-sm font-mono-data text-amber-400/90 overflow-x-auto border border-white/5">
+              {message.key ?? 'null'}
+            </pre>
+          </div>
+
+          {/* Value */}
+          <div>
+            <div className="text-xs text-slate-500 uppercase tracking-wider font-mono-data mb-2">Value</div>
+            <pre className="bg-black/40 rounded-xl p-4 text-sm font-mono-data text-slate-300 overflow-x-auto border border-white/5">
+              {formatJson(message.value)}
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function MessagePage() {
   const { clusterId, topicName } = useParams<{
@@ -17,6 +111,8 @@ export default function MessagePage() {
   const [limit, setLimit] = useState<number>(100);
 
   const offset = offsetMode === 'latest' ? -1 : offsetMode === 'earliest' ? -2 : customOffset;
+
+  const [selectedMessage, setSelectedMessage] = useState<MessageRecord | null>(null);
 
   const { data: topic } = useQuery({
     queryKey: ['topic', clusterId, topicName],
@@ -39,13 +135,42 @@ export default function MessagePage() {
     enabled: false,
   });
 
-  // Auto-fetch on mount or when params change via refetch button
+  // Auto-fetch on mount
   useEffect(() => {
     if (clusterId && topicName) {
       const timer = setTimeout(() => refetch(), 100);
       return () => clearTimeout(timer);
     }
   }, [clusterId, topicName]);
+
+  const pageInfo = useMemo(() => {
+    if (!messages || messages.length === 0) return null;
+    const offsets = messages.map((m) => m.offset);
+    return {
+      minOffset: Math.min(...offsets),
+      maxOffset: Math.max(...offsets),
+      count: messages.length,
+    };
+  }, [messages]);
+
+  const canPageOlder = pageInfo !== null && partition >= 0 && pageInfo.minOffset > 0;
+  const canPageNewer = pageInfo !== null && partition >= 0 && offset >= 0;
+
+  const handleOlder = () => {
+    if (!pageInfo) return;
+    const nextOffset = Math.max(0, pageInfo.minOffset - limit);
+    setOffsetMode('custom');
+    setCustomOffset(nextOffset);
+    setTimeout(() => refetch(), 0);
+  };
+
+  const handleNewer = () => {
+    if (!pageInfo) return;
+    const nextOffset = pageInfo.maxOffset + 1;
+    setOffsetMode('custom');
+    setCustomOffset(nextOffset);
+    setTimeout(() => refetch(), 0);
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10">
@@ -88,7 +213,7 @@ export default function MessagePage() {
               style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }}
             >
               <option value={-1} className="bg-[#0a0e17] text-slate-200">All Partitions</option>
-              {topic?.partitions.map((p) => (
+              {topic?.partitions.map((p: { id: number }) => (
                 <option key={p.id} value={p.id} className="bg-[#0a0e17] text-slate-200">
                   Partition {p.id}
                 </option>
@@ -171,6 +296,23 @@ export default function MessagePage() {
       {/* Messages Table */}
       {(messages && messages.length > 0) && (
         <div className="glass-panel rounded-2xl overflow-hidden animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+          {/* Result count */}
+          <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between">
+            <span className="text-xs text-slate-500 font-mono-data">
+              {messages.length} messages
+              {pageInfo && partition >= 0 && (
+                <span className="ml-2 text-slate-600">
+                  (offset {pageInfo.minOffset} → {pageInfo.maxOffset})
+                </span>
+              )}
+            </span>
+            {partition === -1 && (
+              <span className="text-[10px] text-slate-600 font-mono-data uppercase tracking-wider">
+                Paging disabled for All Partitions
+              </span>
+            )}
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -196,7 +338,8 @@ export default function MessagePage() {
                 {messages.map((m) => (
                   <tr
                     key={`${m.partition}-${m.offset}`}
-                    className="data-row border-b border-white/[0.03] last:border-0"
+                    className="data-row border-b border-white/[0.03] last:border-0 cursor-pointer"
+                    onClick={() => setSelectedMessage(m)}
                   >
                     <td className="px-6 py-4">
                       <span className="badge-cyan rounded-md px-2 py-0.5 text-xs font-mono-data">
@@ -214,7 +357,7 @@ export default function MessagePage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-mono-data text-sm text-slate-300 max-w-md truncate block" title={m.value ?? undefined}>
+                      <span className="font-mono-data text-sm text-slate-300 max-w-md truncate block">
                         {m.value ?? (
                           <span className="text-slate-600 italic">null</span>
                         )}
@@ -230,6 +373,45 @@ export default function MessagePage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {partition >= 0 && pageInfo && (
+            <div className="px-6 py-4 border-t border-white/5 flex items-center justify-between">
+              <button
+                onClick={handleOlder}
+                disabled={!canPageOlder}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  canPageOlder
+                    ? 'bg-slate-800/50 border border-white/5 text-slate-300 hover:bg-cyan-500/10 hover:border-cyan-500/20 hover:text-cyan-400'
+                    : 'bg-slate-800/30 border border-white/[0.03] text-slate-600 cursor-not-allowed'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                Older
+              </button>
+
+              <span className="text-xs text-slate-500 font-mono-data">
+                offset {pageInfo.minOffset} → {pageInfo.maxOffset}
+              </span>
+
+              <button
+                onClick={handleNewer}
+                disabled={!canPageNewer}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  canPageNewer
+                    ? 'bg-slate-800/50 border border-white/5 text-slate-300 hover:bg-cyan-500/10 hover:border-cyan-500/20 hover:text-cyan-400'
+                    : 'bg-slate-800/30 border border-white/[0.03] text-slate-600 cursor-not-allowed'
+                }`}
+              >
+                Newer
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -244,6 +426,14 @@ export default function MessagePage() {
           <p className="text-slate-500 font-display text-lg mb-1">No messages found</p>
           <p className="text-slate-600 text-sm">Adjust offset or fetch from a different partition</p>
         </div>
+      )}
+
+      {/* Message Detail Modal */}
+      {selectedMessage && (
+        <MessageDetailModal
+          message={selectedMessage}
+          onClose={() => setSelectedMessage(null)}
+        />
       )}
     </div>
   );
