@@ -20,6 +20,11 @@ pub async fn create_cluster(
     State(state): State<AppState>,
     Json(req): Json<CreateClusterRequest>,
 ) -> Result<Json<Cluster>, AppError> {
+    if req.name.trim().is_empty() || req.bootstrap_servers.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "name and bootstrap_servers are required".to_string(),
+        ));
+    }
     let id = uuid::Uuid::new_v4().to_string();
     let cluster = Cluster {
         id: id.clone(),
