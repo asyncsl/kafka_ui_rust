@@ -1,7 +1,8 @@
 /target
-*.png
-*.jpg
-*.jpeg
-.gif
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+!assets/
 data/
 .playwright-mcp/

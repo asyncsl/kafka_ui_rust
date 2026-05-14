@@ -4,7 +4,7 @@ A lightweight, fast Kafka management Web UI built with **Rust** (Axum + rdkafka)
 
 Inspired by [Kafbat UI](https://github.com/kafbat/kafka-ui), but with a single-binary deployment and a dark industrial data-terminal aesthetic.
 
-![screenshot](screenshot-cluster-list.png)
+![screenshot](assets/screenshot-cluster-list.png)
 
 ## Features
 
