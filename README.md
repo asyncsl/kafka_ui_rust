@@ -60,7 +60,11 @@ Open your browser at **http://localhost:8080**.
 Example:
 
 ```bash
+# Via environment variables
 PORT=3000 ./target/release/kafka_ui_rust
+
+# Via CLI arguments
+./target/release/kafka_ui_rust -p 3000 -H 0.0.0.0
 ```
 
 ### 3. Add a Cluster

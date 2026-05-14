@@ -8,14 +8,30 @@ mod static_assets;
 mod topic;
 
 use axum::{routing::get, Router};
+use clap::Parser;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 
 use crate::state::AppState;
 
+#[derive(Parser)]
+#[command(name = "kafka_ui_rust")]
+#[command(about = "Kafka management Web UI")]
+struct Args {
+    /// Bind address
+    #[arg(short = 'H', long, env = "HOST", default_value = "127.0.0.1")]
+    host: String,
+
+    /// Listen port
+    #[arg(short, long, env = "PORT", default_value = "8080")]
+    port: u16,
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
+
+    let args = Args::parse();
 
     let state = AppState::new().await;
 
@@ -25,14 +41,9 @@ async fn main() {
         .route("/{*path}", get(static_assets::handler))
         .with_state(state);
 
-    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
-    let port = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8080u16);
-    let addr: SocketAddr = format!("{}:{}", host, port)
+    let addr: SocketAddr = format!("{}:{}", args.host, args.port)
         .parse()
-        .expect("Invalid HOST or PORT");
+        .expect("Invalid host or port");
     let listener = TcpListener::bind(addr).await.unwrap();
     tracing::info!("Listening on {}", addr);
 
