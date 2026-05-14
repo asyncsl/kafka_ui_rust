@@ -60,7 +60,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake libssl-dev pkg-config zlib1g-dev build-essential libsasl2-dev
+          sudo apt-get install -y cmake libssl-dev pkg-config zlib1g-dev build-essential libsasl2-dev libcurl4-openssl-dev
 
       - name: Install dependencies (macOS)
         if: startsWith(matrix.os, 'macos')
