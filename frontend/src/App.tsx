@@ -2,7 +2,9 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ClusterListPage from './pages/ClusterListPage';
 import TopicListPage from './pages/TopicListPage';
+import TopicDetailPage from './pages/TopicDetailPage';
 import MessagePage from './pages/MessagePage';
+import ConsumerGroupsPage from './pages/ConsumerGroupsPage';
 
 const queryClient = new QueryClient();
 
@@ -31,7 +33,7 @@ export default function App() {
                   Kafka UI
                 </span>
               </Link>
-              <div className="flex items-center gap-2 text-xs font-mono-data text-slate-500">
+              <div className="flex items-center gap-6 text-xs font-mono-data text-slate-500">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 SYSTEM ONLINE
               </div>
@@ -43,10 +45,12 @@ export default function App() {
             <Routes>
               <Route path="/" element={<ClusterListPage />} />
               <Route path="/clusters/:clusterId/topics" element={<TopicListPage />} />
+              <Route path="/clusters/:clusterId/topics/:topicName/detail" element={<TopicDetailPage />} />
               <Route
                 path="/clusters/:clusterId/topics/:topicName/messages"
                 element={<MessagePage />}
               />
+              <Route path="/clusters/:clusterId/consumer-groups" element={<ConsumerGroupsPage />} />
             </Routes>
           </main>
         </div>

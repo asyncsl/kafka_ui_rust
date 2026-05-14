@@ -1,0 +1,7 @@
+/target
+*.png
+*.jpg
+*.jpeg
+.gif
+data/
+.playwright-mcp/

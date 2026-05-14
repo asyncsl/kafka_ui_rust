@@ -5,16 +5,29 @@ use tokio::sync::RwLock;
 use crate::cluster::model::Cluster;
 
 fn data_path() -> std::path::PathBuf {
-    std::env::var_os("CARGO_MANIFEST_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-                .unwrap_or_default()
-        })
-        .join("data")
-        .join("clusters.json")
+    if let Some(dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
+        return std::path::PathBuf::from(dir)
+            .join("data")
+            .join("clusters.json");
+    }
+
+    // When running the binary directly, walk up from the exe location
+    // to find the project root (directory containing Cargo.toml or data/)
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.parent();
+        while let Some(d) = dir {
+            let data_file = d.join("data").join("clusters.json");
+            if data_file.exists() {
+                return data_file;
+            }
+            if d.join("Cargo.toml").exists() {
+                return d.join("data").join("clusters.json");
+            }
+            dir = d.parent();
+        }
+    }
+
+    std::path::PathBuf::from("data").join("clusters.json")
 }
 
 #[derive(Clone)]

@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { getTopic, fetchMessages } from '../api/topics';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { flushSync } from 'react-dom';
+import { getTopic, fetchMessages, produceMessage } from '../api/topics';
 
 type OffsetMode = 'latest' | 'earliest' | 'custom';
 
@@ -13,16 +14,104 @@ interface MessageRecord {
   timestamp: number | null;
 }
 
-function formatJson(value: string | null): string {
-  if (!value) return '';
+function highlightJson(value: string | null): React.ReactNode {
+  if (!value) return <span className="text-slate-500 italic">null</span>;
+
+  let formatted: string;
   try {
-    return JSON.stringify(JSON.parse(value), null, 2);
+    formatted = JSON.stringify(JSON.parse(value), null, 2);
   } catch {
-    return value;
+    return <span className="text-slate-300">{value}</span>;
   }
+
+  const tokens: Array<{ type: string; text: string }> = [];
+  let i = 0;
+  while (i < formatted.length) {
+    // String literal
+    if (formatted[i] === '"') {
+      let j = i + 1;
+      while (j < formatted.length) {
+        if (formatted[j] === '\\') {
+          j += 2;
+        } else if (formatted[j] === '"') {
+          j++;
+          break;
+        } else {
+          j++;
+        }
+      }
+      tokens.push({ type: 'string', text: formatted.slice(i, j) });
+      i = j;
+      continue;
+    }
+    // Number
+    if (/[\d-]/.test(formatted[i])) {
+      const match = formatted.slice(i).match(/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+      if (match) {
+        tokens.push({ type: 'number', text: match[0] });
+        i += match[0].length;
+        continue;
+      }
+    }
+    // true, false, null
+    const wordMatch = formatted.slice(i).match(/^(true|false|null)\b/);
+    if (wordMatch) {
+      tokens.push({ type: wordMatch[0] === 'null' ? 'null' : 'boolean', text: wordMatch[0] });
+      i += wordMatch[0].length;
+      continue;
+    }
+    // Punctuation
+    if (/[{}\[\],:]/.test(formatted[i])) {
+      tokens.push({ type: 'punct', text: formatted[i] });
+      i++;
+      continue;
+    }
+    // Whitespace
+    if (/\s/.test(formatted[i])) {
+      let j = i;
+      while (j < formatted.length && /\s/.test(formatted[j])) j++;
+      tokens.push({ type: 'ws', text: formatted.slice(i, j) });
+      i = j;
+      continue;
+    }
+    tokens.push({ type: 'other', text: formatted[i] });
+    i++;
+  }
+
+  // Mark strings that are object keys
+  for (let k = 0; k < tokens.length; k++) {
+    if (tokens[k].type === 'string') {
+      let next = k + 1;
+      while (next < tokens.length && tokens[next].type === 'ws') next++;
+      if (next < tokens.length && tokens[next].text === ':') {
+        tokens[k].type = 'key';
+      }
+    }
+  }
+
+  return tokens.map((tok, idx) => {
+    switch (tok.type) {
+      case 'key':
+        return <span key={idx} className="text-cyan-400">{tok.text}</span>;
+      case 'string':
+        return <span key={idx} className="text-amber-400">{tok.text}</span>;
+      case 'number':
+        return <span key={idx} className="text-purple-400">{tok.text}</span>;
+      case 'boolean':
+        return <span key={idx} className="text-green-400">{tok.text}</span>;
+      case 'null':
+        return <span key={idx} className="text-slate-500">{tok.text}</span>;
+      case 'punct':
+        return <span key={idx} className="text-slate-400">{tok.text}</span>;
+      case 'ws':
+        return <span key={idx}>{tok.text}</span>;
+      default:
+        return <span key={idx} className="text-slate-300">{tok.text}</span>;
+    }
+  });
 }
 
-function MessageDetailModal({
+function MessageDetailPanel({
   message,
   onClose,
 }: {
@@ -30,69 +119,59 @@ function MessageDetailModal({
   onClose: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div
-        className="relative glass-panel rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col animate-fade-in-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
-          <h3 className="font-display text-lg font-semibold text-slate-200">
-            Message Details
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <div className="bg-slate-900/40 border-y border-white/5">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-white/5">
+        <span className="text-xs text-slate-500 font-mono-data uppercase tracking-wider">
+          Message Details
+        </span>
+        <button
+          onClick={onClose}
+          className="text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="p-6 space-y-4">
+        {/* Meta */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Partition</div>
+            <div className="text-sm text-cyan-400 font-mono-data">{message.partition}</div>
+          </div>
+          <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Offset</div>
+            <div className="text-sm text-slate-200 font-mono-data">{message.offset}</div>
+          </div>
+          <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Timestamp</div>
+            <div className="text-sm text-slate-200 font-mono-data">
+              {message.timestamp ? new Date(message.timestamp).toLocaleString() : '—'}
+            </div>
+          </div>
+          <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Key</div>
+            <div className="text-sm text-amber-400/80 font-mono-data truncate">{message.key ?? 'null'}</div>
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="overflow-y-auto p-6 space-y-4">
-          {/* Meta */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Partition</div>
-              <div className="text-sm text-cyan-400 font-mono-data">{message.partition}</div>
-            </div>
-            <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Offset</div>
-              <div className="text-sm text-slate-200 font-mono-data">{message.offset}</div>
-            </div>
-            <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Timestamp</div>
-              <div className="text-sm text-slate-200 font-mono-data">
-                {message.timestamp ? new Date(message.timestamp).toLocaleString() : '—'}
-              </div>
-            </div>
-            <div className="bg-slate-800/40 rounded-lg px-3 py-2 border border-white/5">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono-data">Key</div>
-              <div className="text-sm text-amber-400/80 font-mono-data truncate">{message.key ?? 'null'}</div>
-            </div>
-          </div>
+        {/* Key */}
+        <div>
+          <div className="text-xs text-slate-500 uppercase tracking-wider font-mono-data mb-2">Key</div>
+          <pre className="bg-black/40 rounded-xl p-4 text-sm font-mono-data text-amber-400/90 overflow-x-auto border border-white/5">
+            {message.key ?? 'null'}
+          </pre>
+        </div>
 
-          {/* Key */}
-          <div>
-            <div className="text-xs text-slate-500 uppercase tracking-wider font-mono-data mb-2">Key</div>
-            <pre className="bg-black/40 rounded-xl p-4 text-sm font-mono-data text-amber-400/90 overflow-x-auto border border-white/5">
-              {message.key ?? 'null'}
-            </pre>
-          </div>
-
-          {/* Value */}
-          <div>
-            <div className="text-xs text-slate-500 uppercase tracking-wider font-mono-data mb-2">Value</div>
-            <pre className="bg-black/40 rounded-xl p-4 text-sm font-mono-data text-slate-300 overflow-x-auto border border-white/5">
-              {formatJson(message.value)}
-            </pre>
-          </div>
+        {/* Value with syntax highlighting */}
+        <div>
+          <div className="text-xs text-slate-500 uppercase tracking-wider font-mono-data mb-2">Value</div>
+          <pre className="bg-black/40 rounded-xl p-4 text-sm font-mono-data overflow-x-auto border border-white/5 leading-relaxed">
+            {highlightJson(message.value)}
+          </pre>
         </div>
       </div>
     </div>
@@ -112,7 +191,32 @@ export default function MessagePage() {
 
   const offset = offsetMode === 'latest' ? -1 : offsetMode === 'earliest' ? -2 : customOffset;
 
-  const [selectedMessage, setSelectedMessage] = useState<MessageRecord | null>(null);
+  // Cursor-based pagination for All Partitions mode
+  const [page, setPage] = useState(0);
+  const [cursorHistory, setCursorHistory] = useState<Record<number, number>[]>([]);
+
+  // Animation key — increments once per completed fetch to trigger tbody remount
+  const [animKey, setAnimKey] = useState(0);
+
+  // Track the mode used for the actual fetch (so paging works after offsetMode becomes 'custom')
+  const [fetchMode, setFetchMode] = useState<OffsetMode>('latest');
+
+  const isAllPartitions = partition === -1;
+  const isNewest = fetchMode === 'latest';
+  const seekOffsets = isAllPartitions && page > 0 ? cursorHistory[page - 1] : undefined;
+  const seekDirection = isAllPartitions && page > 0
+    ? (isNewest ? 'before' : 'after')
+    : undefined;
+
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // Produce Message modal state
+  const [isProduceOpen, setIsProduceOpen] = useState(false);
+  const [producePartition, setProducePartition] = useState<string>('');
+  const [produceKey, setProduceKey] = useState('');
+  const [produceValue, setProduceValue] = useState('');
+  const [produceError, setProduceError] = useState<string | null>(null);
+  const [produceSuccess, setProduceSuccess] = useState(false);
 
   const { data: topic } = useQuery({
     queryKey: ['topic', clusterId, topicName],
@@ -120,26 +224,76 @@ export default function MessagePage() {
     enabled: !!clusterId && !!topicName,
   });
 
+  const produceMutation = useMutation({
+    mutationFn: () =>
+      produceMessage(clusterId!, topicName!, {
+        partition: producePartition ? Number(producePartition) : undefined,
+        key: produceKey || undefined,
+        value: produceValue,
+      }),
+    onSuccess: () => {
+      setProduceSuccess(true);
+      setProduceError(null);
+      setTimeout(() => {
+        setIsProduceOpen(false);
+        setProduceSuccess(false);
+        setProducePartition('');
+        setProduceKey('');
+        setProduceValue('');
+        refetch();
+      }, 800);
+    },
+    onError: (err: Error) => {
+      setProduceError(err.message || 'Failed to produce message');
+    },
+  });
+
   const {
-    data: messages,
+    data: response,
     isLoading,
+    isFetching,
     refetch,
   } = useQuery({
-    queryKey: ['messages', clusterId, topicName, partition, offset, limit],
+    queryKey: ['messages', clusterId, topicName, partition, offset, limit, seekOffsets, seekDirection],
     queryFn: () =>
       fetchMessages(clusterId!, topicName!, {
         partition,
         offset,
         limit,
+        seekOffsets,
+        seekDirection,
       }),
     enabled: false,
+    placeholderData: (previousData) => previousData,
   });
+
+  const messages = response?.messages ?? [];
+
+  // Trigger tbody animation exactly once after each fetch completes
+  const prevIsFetchingRef = useRef(isFetching);
+  useEffect(() => {
+    const wasFetching = prevIsFetchingRef.current;
+    prevIsFetchingRef.current = isFetching;
+    if (wasFetching && !isFetching && messages.length > 0) {
+      setAnimKey((k) => k + 1);
+    }
+  }, [isFetching, messages.length]);
+
+  // Sync fetchMode when user explicitly changes offset mode
+  useEffect(() => {
+    setFetchMode(offsetMode);
+  }, [offsetMode]);
+
+  // Reset cursor pagination when fetch params change
+  useEffect(() => {
+    setPage(0);
+    setCursorHistory([]);
+  }, [clusterId, topicName, partition, offsetMode, limit]);
 
   // Auto-fetch on mount
   useEffect(() => {
     if (clusterId && topicName) {
-      const timer = setTimeout(() => refetch(), 100);
-      return () => clearTimeout(timer);
+      refetch();
     }
   }, [clusterId, topicName]);
 
@@ -153,23 +307,92 @@ export default function MessagePage() {
     };
   }, [messages]);
 
-  const canPageOlder = pageInfo !== null && partition >= 0 && pageInfo.minOffset > 0;
-  const canPageNewer = pageInfo !== null && partition >= 0 && offset >= 0;
+  // Single-partition pagination
+  const canPageNextSingle = pageInfo !== null && partition >= 0 && (
+    isNewest ? pageInfo.minOffset > 0 : true
+  );
+  const canPagePreviousSingle = pageInfo !== null && partition >= 0 && (
+    isNewest ? messages.length > 0 : pageInfo.minOffset > 0
+  );
 
-  const handleOlder = () => {
+  // All-partitions cursor pagination
+  const canPageNextAll = isAllPartitions && messages.length > 0;
+  const canPagePreviousAll = isAllPartitions && page > 0;
+
+  const canPageNext = isAllPartitions ? canPageNextAll : canPageNextSingle;
+  const canPagePrevious = isAllPartitions ? canPagePreviousAll : canPagePreviousSingle;
+
+  const handleNext = () => {
+    if (isAllPartitions) {
+      if (!response?.cursors || Object.keys(response.cursors).length === 0) return;
+      flushSync(() => {
+        setCursorHistory((prev) => {
+          const next = [...prev];
+          next[page] = response.cursors;
+          return next;
+        });
+        setPage((p) => p + 1);
+      });
+      refetch();
+      return;
+    }
     if (!pageInfo) return;
-    const nextOffset = Math.max(0, pageInfo.minOffset - limit);
-    setOffsetMode('custom');
-    setCustomOffset(nextOffset);
-    setTimeout(() => refetch(), 0);
+    if (isNewest) {
+      // newest 倒序: Next = 更老的消息
+      const nextOffset = Math.max(0, pageInfo.minOffset - limit);
+      flushSync(() => {
+        setOffsetMode('custom');
+        setCustomOffset(nextOffset);
+      });
+    } else {
+      // oldest/custom 升序: Next = 更新的消息
+      const nextOffset = pageInfo.maxOffset + 1;
+      flushSync(() => {
+        setOffsetMode('custom');
+        setCustomOffset(nextOffset);
+      });
+    }
+    refetch();
   };
 
-  const handleNewer = () => {
+  const handlePrevious = () => {
+    if (isAllPartitions) {
+      if (page <= 0) return;
+      flushSync(() => {
+        setPage((p) => p - 1);
+      });
+      refetch();
+      return;
+    }
     if (!pageInfo) return;
-    const nextOffset = pageInfo.maxOffset + 1;
-    setOffsetMode('custom');
-    setCustomOffset(nextOffset);
-    setTimeout(() => refetch(), 0);
+    if (isNewest) {
+      // newest 倒序: Previous = 更新的消息
+      const nextOffset = pageInfo.maxOffset + 1;
+      flushSync(() => {
+        setOffsetMode('custom');
+        setCustomOffset(nextOffset);
+      });
+    } else {
+      // oldest/custom 升序: Previous = 更老的消息
+      const nextOffset = Math.max(0, pageInfo.minOffset - limit);
+      flushSync(() => {
+        setOffsetMode('custom');
+        setCustomOffset(nextOffset);
+      });
+    }
+    refetch();
+  };
+
+  const toggleRow = (rowKey: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+      } else {
+        next.add(rowKey);
+      }
+      return next;
+    });
   };
 
   return (
@@ -271,7 +494,10 @@ export default function MessagePage() {
           {/* Fetch Button */}
           <button
             className="btn-primary rounded-xl px-6 py-3 text-sm"
-            onClick={() => refetch()}
+            onClick={() => {
+              setFetchMode(offsetMode);
+              refetch();
+            }}
           >
             <span className="relative z-10 flex items-center justify-center gap-2">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -280,11 +506,28 @@ export default function MessagePage() {
               Fetch Messages
             </span>
           </button>
+
+          {/* Produce Button */}
+          <button
+            className="rounded-xl px-6 py-3 text-sm font-medium transition-all bg-slate-800/50 border border-white/5 text-slate-300 hover:bg-amber-500/10 hover:border-amber-500/20 hover:text-amber-400"
+            onClick={() => {
+              setIsProduceOpen(true);
+              setProduceError(null);
+              setProduceSuccess(false);
+            }}
+          >
+            <span className="flex items-center justify-center gap-2">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Produce Message
+            </span>
+          </button>
         </div>
       </div>
 
-      {/* Loading */}
-      {isLoading && (
+      {/* Loading — only on first load when no data exists yet */}
+      {isLoading && !messages && (
         <div className="flex items-center justify-center py-16">
           <div className="flex items-center gap-3 text-slate-500 font-mono-data">
             <div className="w-5 h-5 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
@@ -295,7 +538,16 @@ export default function MessagePage() {
 
       {/* Messages Table */}
       {(messages && messages.length > 0) && (
-        <div className="glass-panel rounded-2xl overflow-hidden animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+        <div className="glass-panel rounded-2xl overflow-hidden">
+          {/* Refreshing indicator — fixed height to prevent layout shift */}
+          <div className={`transition-all duration-200 overflow-hidden ${isFetching ? 'max-h-10 opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="px-6 py-2 border-b border-white/5 bg-amber-500/5">
+              <div className="flex items-center gap-2 text-xs text-amber-400 font-mono-data">
+                <div className="w-3 h-3 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+                Refreshing messages...
+              </div>
+            </div>
+          </div>
           {/* Result count */}
           <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between">
             <span className="text-xs text-slate-500 font-mono-data">
@@ -305,18 +557,21 @@ export default function MessagePage() {
                   (offset {pageInfo.minOffset} → {pageInfo.maxOffset})
                 </span>
               )}
+              {isAllPartitions && page > 0 && (
+                <span className="ml-2 text-slate-600">
+                  page {page}
+                </span>
+              )}
             </span>
-            {partition === -1 && (
-              <span className="text-[10px] text-slate-600 font-mono-data uppercase tracking-wider">
-                Paging disabled for All Partitions
-              </span>
-            )}
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/5">
+                  <th className="text-left px-4 py-4 text-xs font-mono-data uppercase tracking-wider text-slate-500 w-12">
+                    {/* Expand column */}
+                  </th>
                   <th className="text-left px-6 py-4 text-xs font-mono-data uppercase tracking-wider text-slate-500">
                     Partition
                   </th>
@@ -334,54 +589,82 @@ export default function MessagePage() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {messages.map((m) => (
-                  <tr
-                    key={`${m.partition}-${m.offset}`}
-                    className="data-row border-b border-white/[0.03] last:border-0 cursor-pointer"
-                    onClick={() => setSelectedMessage(m)}
-                  >
-                    <td className="px-6 py-4">
-                      <span className="badge-cyan rounded-md px-2 py-0.5 text-xs font-mono-data">
-                        {m.partition}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-mono-data text-slate-300 text-sm">
-                      {m.offset}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="font-mono-data text-sm text-amber-400/80 max-w-[200px] truncate block">
-                        {m.key ?? (
-                          <span className="text-slate-600 italic">null</span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="font-mono-data text-sm text-slate-300 max-w-md truncate block">
-                        {m.value ?? (
-                          <span className="text-slate-600 italic">null</span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-mono-data text-xs text-slate-500">
-                      {m.timestamp ? new Date(m.timestamp).toLocaleString() : (
-                        <span className="text-slate-600">—</span>
+              <tbody key={animKey}>
+                {messages.map((m, idx) => {
+                  const rowKey = `${m.partition}-${m.offset}`;
+                  const isExpanded = expandedRows.has(rowKey);
+                  return (
+                    <Fragment key={rowKey}>
+                      <tr
+                        className="data-row border-b border-white/[0.03] last:border-0 animate-fade-in-up"
+                        style={{ animationDelay: `${idx * 0.015}s` }}
+                      >
+                        <td className="px-4 py-4">
+                          <button
+                            onClick={() => toggleRow(rowKey)}
+                            className={`w-6 h-6 flex items-center justify-center rounded border text-xs font-mono-data transition-colors ${
+                              isExpanded
+                                ? 'border-cyan-500 text-cyan-400 bg-cyan-500/10'
+                                : 'border-slate-600 text-slate-400 hover:border-cyan-500 hover:text-cyan-400'
+                            }`}
+                            title={isExpanded ? 'Collapse' : 'Expand details'}
+                          >
+                            {isExpanded ? '−' : '+'}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="badge-cyan rounded-md px-2 py-0.5 text-xs font-mono-data">
+                            {m.partition}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-mono-data text-slate-300 text-sm">
+                          {m.offset}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-mono-data text-sm text-amber-400/80 max-w-[200px] truncate block">
+                            {m.key ?? (
+                              <span className="text-slate-600 italic">null</span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="font-mono-data text-sm text-slate-300 max-w-md truncate block">
+                            {m.value ?? (
+                              <span className="text-slate-600 italic">null</span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 font-mono-data text-xs text-slate-500">
+                          {m.timestamp ? new Date(m.timestamp).toLocaleString() : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={6} className="p-0">
+                            <MessageDetailPanel
+                              message={m}
+                              onClose={() => toggleRow(rowKey)}
+                            />
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                  </tr>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Pagination */}
-          {partition >= 0 && pageInfo && (
+          {pageInfo && (
             <div className="px-6 py-4 border-t border-white/5 flex items-center justify-between">
               <button
-                onClick={handleOlder}
-                disabled={!canPageOlder}
+                onClick={handlePrevious}
+                disabled={!canPagePrevious}
                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  canPageOlder
+                  canPagePrevious
                     ? 'bg-slate-800/50 border border-white/5 text-slate-300 hover:bg-cyan-500/10 hover:border-cyan-500/20 hover:text-cyan-400'
                     : 'bg-slate-800/30 border border-white/[0.03] text-slate-600 cursor-not-allowed'
                 }`}
@@ -389,23 +672,25 @@ export default function MessagePage() {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                 </svg>
-                Older
+                Previous
               </button>
 
               <span className="text-xs text-slate-500 font-mono-data">
-                offset {pageInfo.minOffset} → {pageInfo.maxOffset}
+                {isAllPartitions
+                  ? `page ${page + 1}`
+                  : `offset ${pageInfo.minOffset} → ${pageInfo.maxOffset}`}
               </span>
 
               <button
-                onClick={handleNewer}
-                disabled={!canPageNewer}
+                onClick={handleNext}
+                disabled={!canPageNext}
                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  canPageNewer
+                  canPageNext
                     ? 'bg-slate-800/50 border border-white/5 text-slate-300 hover:bg-cyan-500/10 hover:border-cyan-500/20 hover:text-cyan-400'
                     : 'bg-slate-800/30 border border-white/[0.03] text-slate-600 cursor-not-allowed'
                 }`}
               >
-                Newer
+                Next
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
@@ -417,7 +702,7 @@ export default function MessagePage() {
 
       {/* Empty State */}
       {messages && messages.length === 0 && !isLoading && (
-        <div className="glass-panel rounded-2xl p-16 text-center animate-fade-in-up">
+        <div className="glass-panel rounded-2xl p-16 text-center">
           <div className="w-16 h-16 rounded-2xl bg-slate-800/50 border border-white/5 flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -428,12 +713,104 @@ export default function MessagePage() {
         </div>
       )}
 
-      {/* Message Detail Modal */}
-      {selectedMessage && (
-        <MessageDetailModal
-          message={selectedMessage}
-          onClose={() => setSelectedMessage(null)}
-        />
+      {/* Produce Message Modal */}
+      {isProduceOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="glass-panel rounded-2xl p-6 w-full max-w-lg">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-display text-lg font-semibold text-slate-200">Produce Message</h3>
+              <button
+                onClick={() => setIsProduceOpen(false)}
+                className="text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Partition */}
+              <div>
+                <label className="block text-xs text-slate-500 mb-2 font-mono-data uppercase tracking-wider">
+                  Partition <span className="text-slate-600 normal-case">(optional)</span>
+                </label>
+                <input
+                  className="terminal-input w-full rounded-xl px-4 py-3 text-sm"
+                  type="number"
+                  placeholder="Default partition"
+                  value={producePartition}
+                  onChange={(e) => setProducePartition(e.target.value)}
+                />
+              </div>
+
+              {/* Key */}
+              <div>
+                <label className="block text-xs text-slate-500 mb-2 font-mono-data uppercase tracking-wider">
+                  Key <span className="text-slate-600 normal-case">(optional)</span>
+                </label>
+                <input
+                  className="terminal-input w-full rounded-xl px-4 py-3 text-sm"
+                  type="text"
+                  placeholder="Message key"
+                  value={produceKey}
+                  onChange={(e) => setProduceKey(e.target.value)}
+                />
+              </div>
+
+              {/* Value */}
+              <div>
+                <label className="block text-xs text-slate-500 mb-2 font-mono-data uppercase tracking-wider">
+                  Value <span className="text-red-400">*</span>
+                </label>
+                <textarea
+                  className="terminal-input w-full rounded-xl px-4 py-3 text-sm min-h-[120px] resize-y"
+                  placeholder="Enter message value..."
+                  value={produceValue}
+                  onChange={(e) => setProduceValue(e.target.value)}
+                />
+              </div>
+
+              {/* Error */}
+              {produceError && (
+                <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+                  {produceError}
+                </div>
+              )}
+
+              {/* Success */}
+              {produceSuccess && (
+                <div className="text-sm text-green-400 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
+                  Message produced successfully
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setIsProduceOpen(false)}
+                  className="rounded-xl px-5 py-2.5 text-sm font-medium transition-all bg-slate-800/50 border border-white/5 text-slate-300 hover:bg-slate-700/50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (!produceValue.trim()) {
+                      setProduceError('Value is required');
+                      return;
+                    }
+                    setProduceError(null);
+                    produceMutation.mutate();
+                  }}
+                  disabled={produceMutation.isPending || produceSuccess}
+                  className="rounded-xl px-5 py-2.5 text-sm font-medium transition-all bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {produceMutation.isPending ? 'Sending...' : produceSuccess ? 'Sent!' : 'Send'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
