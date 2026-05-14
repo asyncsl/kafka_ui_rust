@@ -10,6 +10,8 @@ jobs:
   build:
     name: Build ${{ matrix.asset_name }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +60,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake libssl-dev pkg-config zlib1g-dev
+          sudo apt-get install -y cmake libssl-dev pkg-config zlib1g-dev build-essential libsasl2-dev
 
       - name: Install dependencies (macOS)
         if: startsWith(matrix.os, 'macos')
