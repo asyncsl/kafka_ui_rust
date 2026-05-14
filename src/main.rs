@@ -25,7 +25,14 @@ async fn main() {
         .route("/{*path}", get(static_assets::handler))
         .with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080u16);
+    let addr: SocketAddr = format!("{}:{}", host, port)
+        .parse()
+        .expect("Invalid HOST or PORT");
     let listener = TcpListener::bind(addr).await.unwrap();
     tracing::info!("Listening on {}", addr);
 

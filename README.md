@@ -50,6 +50,19 @@ cargo build --release
 
 Open your browser at **http://localhost:8080**.
 
+**Environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HOST` | `127.0.0.1` | Bind address |
+| `PORT` | `8080` | Listen port |
+
+Example:
+
+```bash
+PORT=3000 ./target/release/kafka_ui_rust
+```
+
 ### 3. Add a Cluster
 
 Click **"Add Cluster"** on the home page, enter your Kafka bootstrap servers (e.g. `localhost:9092`), and save. The cluster config is persisted to `data/clusters.json`.
