@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { GroupTreeNode } from '../../hooks/useClusterTree';
 import type { Selection } from '../../types';
@@ -30,6 +31,29 @@ export default function GroupNode({
   posInSet,
   setSize,
 }: Props) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handle = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent && e.key === 'Escape') {
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      } else if (e instanceof MouseEvent && menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', handle);
+    document.addEventListener('mousedown', handle);
+    return () => {
+      document.removeEventListener('keydown', handle);
+      document.removeEventListener('mousedown', handle);
+    };
+  }, [menuOpen]);
+
   const expanded = expandedIds.has(node.group.id);
   const isSelected = selection.kind === 'group' && selection.id === node.group.id;
   const childCount = node.children.length + node.clusters.length;
@@ -125,27 +149,67 @@ export default function GroupNode({
 
         <span className="text-xs text-slate-500 font-mono-data">{childCount}</span>
 
-        <span
-          role="button"
-          tabIndex={-1}
-          className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-300 px-1"
-          onClick={(e) => {
-            e.stopPropagation();
-            const action = window.prompt(
-              'Action: e (edit), a (add child), d (delete)',
-              'e'
-            );
-            if (action === 'e') onEdit(node);
-            else if (action === 'a') onAddChild(node.group.id);
-            else if (action === 'd') {
-              if (isEmpty) onDelete(node);
-              else window.alert('Group not empty — cannot delete');
-            }
-          }}
-          title="Group actions"
-        >
-          ⋯
-        </span>
+        <div ref={menuRef} className="relative" onClick={(e) => e.stopPropagation()}>
+          <button
+            ref={triggerRef}
+            type="button"
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-slate-500 hover:text-slate-300 px-1"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label="Group actions"
+          >
+            ⋯
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-1 z-20 w-40 glass-panel rounded-lg py-1 text-xs"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full text-left px-3 py-1.5 hover:bg-white/5 focus:bg-white/5 focus:outline-none"
+                onClick={() => {
+                  setMenuOpen(false);
+                  triggerRef.current?.focus();
+                  onEdit(node);
+                }}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="w-full text-left px-3 py-1.5 hover:bg-white/5 focus:bg-white/5 focus:outline-none"
+                onClick={() => {
+                  setMenuOpen(false);
+                  triggerRef.current?.focus();
+                  onAddChild(node.group.id);
+                }}
+              >
+                Add child
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-disabled={!isEmpty}
+                className={`w-full text-left px-3 py-1.5 focus:bg-white/5 focus:outline-none ${
+                  isEmpty ? 'text-red-400 hover:bg-red-500/10' : 'text-slate-600 cursor-not-allowed'
+                }`}
+                onClick={() => {
+                  if (!isEmpty) return;
+                  setMenuOpen(false);
+                  triggerRef.current?.focus();
+                  onDelete(node);
+                }}
+                title={isEmpty ? undefined : 'Group is not empty'}
+              >
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {expanded && (
