@@ -20,7 +20,7 @@ import {
 } from '../api/groups';
 import { nextOrderForAppend } from '../utils/order';
 import { useClusterTree, collectDescendantGroupIds } from '../hooks/useClusterTree';
-import type { Group, Selection, ViewMode } from '../types';
+import type { Cluster, Group, Selection, ViewMode } from '../types';
 import ClusterTree from '../components/cluster/ClusterTree';
 import ClusterDetailPanel from '../components/cluster/ClusterDetailPanel';
 import GroupEditModal from '../components/cluster/GroupEditModal';
@@ -52,6 +52,12 @@ export default function ClusterListPage() {
   });
   const tree = useClusterTree(groups, clusters);
 
+  const [activeDrag, setActiveDrag] = useState<
+    | { kind: 'group'; id: string; label: string }
+    | { kind: 'cluster'; id: string; label: string }
+    | null
+  >(null);
+
   const forbiddenDropIds = useMemo(() => {
     if (!activeDrag || activeDrag.kind !== 'group') return EMPTY_SET;
     const node = tree.byId.get(activeDrag.id);
@@ -67,12 +73,6 @@ export default function ClusterListPage() {
   const [showAddCluster, setShowAddCluster] = useState(false);
   const [name, setName] = useState('');
   const [bootstrapServers, setBootstrapServers] = useState('');
-
-  const [activeDrag, setActiveDrag] = useState<
-    | { kind: 'group'; id: string; label: string }
-    | { kind: 'cluster'; id: string; label: string }
-    | null
-  >(null);
 
   const [mobileTab, setMobileTab] = useState<'tree' | 'clusters'>('tree');
 
@@ -134,7 +134,7 @@ export default function ClusterListPage() {
     if (target.kind === 'group' && target.id === sourceId) return;
     if (forbiddenDropIds.has(target.kind === 'group' ? target.id : '__none__')) return;
 
-    const newParentId = target.kind === 'ungrouped' ? null : target.id;
+    const newParentId = target.kind === 'group' ? target.id : null;
     const siblings = groups.filter((g) => g.parent_id === newParentId && g.id !== sourceId);
     const newOrder = nextOrderForAppend(siblings.map((s) => s.order));
 
