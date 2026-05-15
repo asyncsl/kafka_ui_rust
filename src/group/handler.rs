@@ -4,10 +4,11 @@ use axum::{
     Json,
 };
 use regex::Regex;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::error::AppError;
-use crate::group::model::{CreateGroupRequest, Group, UpdateGroupRequest};
+use crate::group::model::{CreateGroupRequest, Group, MoveGroupRequest, UpdateGroupRequest};
 use crate::state::AppState;
 
 const NAME_MAX_LEN: usize = 64;
@@ -168,6 +169,53 @@ pub async fn delete_group(
     Ok(StatusCode::NO_CONTENT)
 }
 
+fn collect_descendant_ids(groups: &HashMap<String, Group>, root_id: &str) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    let mut out: HashSet<String> = HashSet::new();
+    let mut stack: Vec<String> = vec![root_id.to_string()];
+    while let Some(current) = stack.pop() {
+        for g in groups.values() {
+            if g.parent_id.as_deref() == Some(&current) && !out.contains(&g.id) {
+                out.insert(g.id.clone());
+                stack.push(g.id.clone());
+            }
+        }
+    }
+    out
+}
+
+pub async fn move_group(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<MoveGroupRequest>,
+) -> Result<Json<Group>, AppError> {
+    let mut groups = state.groups.write().await;
+    if !groups.contains_key(&id) {
+        return Err(AppError::GroupNotFound);
+    }
+
+    if let Some(new_parent) = &req.parent_id {
+        if new_parent == &id {
+            return Err(AppError::CycleDetected);
+        }
+        if !groups.contains_key(new_parent) {
+            return Err(AppError::GroupNotFound);
+        }
+        let descendants = collect_descendant_ids(&groups, &id);
+        if descendants.contains(new_parent) {
+            return Err(AppError::CycleDetected);
+        }
+    }
+
+    let group = groups.get_mut(&id).unwrap();
+    group.parent_id = req.parent_id;
+    group.order = req.order;
+    let updated = group.clone();
+    drop(groups);
+    let _ = state.save().await;
+    Ok(Json(updated))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,5 +369,92 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn move_group_into_descendant_is_cycle() {
+        let state = empty_state();
+        let g_a = create_group(
+            axum::extract::State(state.clone()),
+            Json(CreateGroupRequest {
+                name: "a".into(),
+                parent_id: None,
+                color: None,
+                icon: None,
+                description: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        let g_b = create_group(
+            axum::extract::State(state.clone()),
+            Json(CreateGroupRequest {
+                name: "b".into(),
+                parent_id: Some(g_a.id.clone()),
+                color: None,
+                icon: None,
+                description: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        let err = move_group(
+            axum::extract::State(state),
+            axum::extract::Path(g_a.id.clone()),
+            Json(MoveGroupRequest {
+                parent_id: Some(g_b.id),
+                order: 0,
+            }),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(matches!(err, AppError::CycleDetected));
+    }
+
+    #[tokio::test]
+    async fn move_group_to_root_succeeds() {
+        let state = empty_state();
+        let parent = create_group(
+            axum::extract::State(state.clone()),
+            Json(CreateGroupRequest {
+                name: "p".into(),
+                parent_id: None,
+                color: None,
+                icon: None,
+                description: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        let child = create_group(
+            axum::extract::State(state.clone()),
+            Json(CreateGroupRequest {
+                name: "c".into(),
+                parent_id: Some(parent.id.clone()),
+                color: None,
+                icon: None,
+                description: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        let moved = move_group(
+            axum::extract::State(state),
+            axum::extract::Path(child.id),
+            Json(MoveGroupRequest {
+                parent_id: None,
+                order: 99,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        assert_eq!(moved.parent_id, None);
+        assert_eq!(moved.order, 99);
     }
 }
