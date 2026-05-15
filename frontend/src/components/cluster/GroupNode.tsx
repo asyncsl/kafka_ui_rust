@@ -10,6 +10,8 @@ interface Props {
   onEdit: (node: GroupTreeNode) => void;
   onAddChild: (parentId: string) => void;
   onDelete: (node: GroupTreeNode) => void;
+  posInSet?: number;
+  setSize?: number;
 }
 
 export default function GroupNode({
@@ -21,6 +23,8 @@ export default function GroupNode({
   onEdit,
   onAddChild,
   onDelete,
+  posInSet,
+  setSize,
 }: Props) {
   const expanded = expandedIds.has(node.group.id);
   const isSelected = selection.kind === 'group' && selection.id === node.group.id;
@@ -34,6 +38,9 @@ export default function GroupNode({
         role="treeitem"
         aria-expanded={canExpand ? expanded : undefined}
         aria-selected={isSelected}
+        aria-level={node.depth + 1}
+        aria-posinset={posInSet}
+        aria-setsize={setSize}
         tabIndex={0}
         className={`group flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
           isSelected
@@ -53,8 +60,9 @@ export default function GroupNode({
           }
         }}
       >
-        <button
-          type="button"
+        <span
+          role="button"
+          tabIndex={-1}
           aria-label={expanded ? 'Collapse' : 'Expand'}
           onClick={(e) => {
             e.stopPropagation();
@@ -65,7 +73,7 @@ export default function GroupNode({
           }`}
         >
           {canExpand ? (expanded ? '▾' : '▸') : '·'}
-        </button>
+        </span>
 
         {node.group.icon && <span className="text-sm">{node.group.icon}</span>}
 
@@ -78,8 +86,9 @@ export default function GroupNode({
 
         <span className="text-xs text-slate-500 font-mono-data">{childCount}</span>
 
-        <button
-          type="button"
+        <span
+          role="button"
+          tabIndex={-1}
           className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-slate-300 px-1"
           onClick={(e) => {
             e.stopPropagation();
@@ -97,12 +106,12 @@ export default function GroupNode({
           title="Group actions"
         >
           ⋯
-        </button>
+        </span>
       </div>
 
       {expanded && (
         <div>
-          {node.children.map((child) => (
+          {node.children.map((child, childIndex) => (
             <GroupNode
               key={child.group.id}
               node={child}
@@ -113,6 +122,8 @@ export default function GroupNode({
               onEdit={onEdit}
               onAddChild={onAddChild}
               onDelete={onDelete}
+              posInSet={childIndex + 1}
+              setSize={node.children.length}
             />
           ))}
         </div>

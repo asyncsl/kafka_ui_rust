@@ -38,7 +38,7 @@ export default function ClusterTree({
         All Clusters
       </button>
 
-      {tree.roots.map((node) => (
+      {tree.roots.map((node, index) => (
         <GroupNode
           key={node.group.id}
           node={node}
@@ -49,6 +49,8 @@ export default function ClusterTree({
           onEdit={onEditGroup}
           onAddChild={onAddChildGroup}
           onDelete={onDeleteGroup}
+          posInSet={index + 1}
+          setSize={tree.roots.length}
         />
       ))}
 
