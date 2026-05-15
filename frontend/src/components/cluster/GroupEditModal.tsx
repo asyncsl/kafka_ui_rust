@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Group } from '../../types';
 import IconPicker from './IconPicker';
 
@@ -40,13 +40,16 @@ export default function GroupEditModal({
   const [color, setColor] = useState<string | null>(null);
   const [icon, setIcon] = useState<string | null>(null);
   const [description, setDescription] = useState('');
+  const prevOpenRef = useRef(false);
 
   useEffect(() => {
-    if (!open) return;
-    setName(group?.name ?? '');
-    setColor(group?.color ?? null);
-    setIcon(group?.icon ?? null);
-    setDescription(group?.description ?? '');
+    if (open && !prevOpenRef.current) {
+      setName(group?.name ?? '');
+      setColor(group?.color ?? null);
+      setIcon(group?.icon ?? null);
+      setDescription(group?.description ?? '');
+    }
+    prevOpenRef.current = open;
   }, [open, group]);
 
   if (!open) return null;
@@ -62,14 +65,37 @@ export default function GroupEditModal({
     });
   };
 
+  const handleOverlayKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      onClose();
+    }
+  };
+
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="glass-panel rounded-2xl p-6 w-full max-w-md mx-4 glow-border">
-        <h2 className="font-display text-xl font-bold text-slate-100 mb-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="group-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={handleOverlayClick}
+      onKeyDown={handleOverlayKeyDown}
+      tabIndex={-1}
+    >
+      <div
+        className="glass-panel rounded-2xl p-6 w-full max-w-md mx-4 glow-border"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="group-modal-title" className="font-display text-xl font-bold text-slate-100 mb-4">
           {isEdit ? 'Edit Group' : 'New Group'}
         </h2>
 
-        <div className="space-y-4">
+        <form id="group-edit-form" onSubmit={(e) => { e.preventDefault(); submit(); }} className="space-y-4">
           <div>
             <label className="block text-xs uppercase tracking-wider text-slate-500 mb-1 font-mono-data">
               Name
@@ -97,6 +123,7 @@ export default function GroupEditModal({
                     : 'border-white/10 text-slate-500 hover:border-white/20'
                 }`}
                 title="No color"
+                aria-label="No color"
               >
                 ∅
               </button>
@@ -109,6 +136,7 @@ export default function GroupEditModal({
                     color === c ? 'border-white' : 'border-white/10'
                   }`}
                   style={{ backgroundColor: c }}
+                  aria-label={c}
                 />
               ))}
             </div>
@@ -139,7 +167,7 @@ export default function GroupEditModal({
               {errorMessage}
             </div>
           )}
-        </div>
+        </form>
 
         <div className="flex justify-end gap-2 mt-6">
           <button
@@ -150,8 +178,8 @@ export default function GroupEditModal({
             Cancel
           </button>
           <button
-            type="button"
-            onClick={submit}
+            type="submit"
+            form="group-edit-form"
             disabled={saving || !name.trim()}
             className="btn-primary rounded-xl px-4 py-2 text-sm disabled:opacity-50"
           >
