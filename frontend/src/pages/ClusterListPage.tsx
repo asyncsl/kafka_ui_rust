@@ -35,6 +35,8 @@ function loadExpanded(): Set<string> {
   }
 }
 
+const EMPTY_SET = new Set<string>();
+
 export default function ClusterListPage() {
   const queryClient = useQueryClient();
 
@@ -49,9 +51,9 @@ export default function ClusterListPage() {
   const tree = useClusterTree(groups, clusters);
 
   const forbiddenDropIds = useMemo(() => {
-    if (!activeDrag || activeDrag.kind !== 'group') return new Set<string>();
+    if (!activeDrag || activeDrag.kind !== 'group') return EMPTY_SET;
     const node = tree.byId.get(activeDrag.id);
-    if (!node) return new Set<string>();
+    if (!node) return EMPTY_SET;
     const ids = collectDescendantGroupIds(node);
     ids.add(activeDrag.id); // can't drop into itself
     return ids;
@@ -77,11 +79,11 @@ export default function ClusterListPage() {
 
   const onDragStart = (e: DragStartEvent) => {
     const data = e.active.data.current as
-      | { kind: 'group'; label: string }
-      | { kind: 'cluster'; label: string }
+      | { kind: 'group'; label: string; sourceId: string }
+      | { kind: 'cluster'; label: string; sourceId: string }
       | undefined;
     if (!data) return;
-    setActiveDrag({ kind: data.kind, id: String(e.active.id), label: data.label });
+    setActiveDrag({ kind: data.kind, id: data.sourceId, label: data.label });
   };
 
   const onDragEnd = (_e: DragEndEvent) => {
