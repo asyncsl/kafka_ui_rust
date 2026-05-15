@@ -74,6 +74,8 @@ export default function ClusterListPage() {
     | null
   >(null);
 
+  const [mobileTab, setMobileTab] = useState<'tree' | 'clusters'>('tree');
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
     useSensor(KeyboardSensor)
@@ -342,8 +344,37 @@ export default function ClusterListPage() {
           </button>
         </div>
 
+        <div className="md:hidden flex gap-1 mb-3 text-xs font-mono-data">
+          <button
+            type="button"
+            aria-pressed={mobileTab === 'tree'}
+            onClick={() => setMobileTab('tree')}
+            className={`px-3 py-2 rounded-lg border ${
+              mobileTab === 'tree'
+                ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400'
+                : 'border-white/10 text-slate-500'
+            }`}
+          >
+            Tree
+          </button>
+          <button
+            type="button"
+            aria-pressed={mobileTab === 'clusters'}
+            onClick={() => setMobileTab('clusters')}
+            className={`px-3 py-2 rounded-lg border ${
+              mobileTab === 'clusters'
+                ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400'
+                : 'border-white/10 text-slate-500'
+            }`}
+          >
+            Clusters
+          </button>
+        </div>
+
         <div className="flex flex-col md:flex-row gap-6">
-          <aside className="md:w-72 md:flex-shrink-0 glass-panel rounded-2xl p-3">
+          <aside className={`md:w-72 md:flex-shrink-0 glass-panel rounded-2xl p-3 ${
+            mobileTab === 'tree' ? '' : 'hidden md:block'
+          }`}>
             <ClusterTree
               tree={tree}
               selection={selection}
@@ -357,7 +388,9 @@ export default function ClusterListPage() {
             />
           </aside>
 
-          <div className="flex-1 min-w-0">
+          <div className={`flex-1 min-w-0 ${
+            mobileTab === 'clusters' ? '' : 'hidden md:block'
+          }`}>
             {showAddCluster && (
               <div className="glass-panel rounded-2xl p-5 mb-5 glow-border">
                 <div className="flex flex-col sm:flex-row gap-3">
