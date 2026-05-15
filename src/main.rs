@@ -2,6 +2,7 @@ mod api;
 mod cluster;
 mod consumer;
 mod error;
+mod group;
 mod kafka;
 mod state;
 mod static_assets;
