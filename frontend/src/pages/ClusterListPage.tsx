@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -17,7 +17,7 @@ import {
   listGroups,
   updateGroup,
 } from '../api/groups';
-import { useClusterTree } from '../hooks/useClusterTree';
+import { useClusterTree, collectDescendantGroupIds } from '../hooks/useClusterTree';
 import type { Group, Selection, ViewMode } from '../types';
 import ClusterTree from '../components/cluster/ClusterTree';
 import ClusterDetailPanel from '../components/cluster/ClusterDetailPanel';
@@ -47,6 +47,15 @@ export default function ClusterListPage() {
     queryFn: listGroups,
   });
   const tree = useClusterTree(groups, clusters);
+
+  const forbiddenDropIds = useMemo(() => {
+    if (!activeDrag || activeDrag.kind !== 'group') return new Set<string>();
+    const node = tree.byId.get(activeDrag.id);
+    if (!node) return new Set<string>();
+    const ids = collectDescendantGroupIds(node);
+    ids.add(activeDrag.id); // can't drop into itself
+    return ids;
+  }, [activeDrag, tree]);
 
   const [selection, setSelection] = useState<Selection>({ kind: 'all' });
   const [viewMode, setViewMode] = useState<ViewMode>('recursive');
@@ -247,6 +256,7 @@ export default function ClusterListPage() {
               tree={tree}
               selection={selection}
               expandedIds={expandedIds}
+              forbiddenDropIds={forbiddenDropIds}
               onToggle={toggleExpanded}
               onSelect={setSelection}
               onEditGroup={openEditGroup}

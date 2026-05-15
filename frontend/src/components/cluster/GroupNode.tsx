@@ -1,3 +1,4 @@
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { GroupTreeNode } from '../../hooks/useClusterTree';
 import type { Selection } from '../../types';
 
@@ -5,6 +6,8 @@ interface Props {
   node: GroupTreeNode;
   selection: Selection;
   expandedIds: Set<string>;
+  /** IDs that should refuse drops (descendants of the currently-dragged group). */
+  forbiddenDropIds: Set<string>;
   onToggle: (id: string) => void;
   onSelect: (sel: Selection) => void;
   onEdit: (node: GroupTreeNode) => void;
@@ -18,6 +21,7 @@ export default function GroupNode({
   node,
   selection,
   expandedIds,
+  forbiddenDropIds,
   onToggle,
   onSelect,
   onEdit,
@@ -31,10 +35,40 @@ export default function GroupNode({
   const childCount = node.children.length + node.clusters.length;
   const canExpand = node.children.length > 0 || node.clusters.length > 0;
   const isEmpty = childCount === 0;
+  const isForbidden = forbiddenDropIds.has(node.group.id);
+
+  const dragId = `group:${node.group.id}`;
+  const dropId = `drop-group:${node.group.id}`;
+
+  const draggable = useDraggable({
+    id: dragId,
+    data: { kind: 'group', label: node.group.name, sourceId: node.group.id },
+    disabled: false,
+  });
+
+  const droppable = useDroppable({
+    id: dropId,
+    data: { kind: 'group', targetId: node.group.id },
+    disabled: isForbidden,
+  });
+
+  const rowRef = (el: HTMLDivElement | null) => {
+    draggable.setNodeRef(el);
+    droppable.setNodeRef(el);
+  };
+
+  const hoverStyle = droppable.isOver
+    ? isForbidden
+      ? 'ring-2 ring-red-500/60 ring-dashed cursor-not-allowed'
+      : 'ring-2 ring-cyan-500/60 shadow-cyan-500/30 shadow-lg'
+    : '';
 
   return (
     <div>
       <div
+        ref={rowRef}
+        {...draggable.attributes}
+        {...draggable.listeners}
         role="treeitem"
         aria-expanded={canExpand ? expanded : undefined}
         aria-selected={isSelected}
@@ -46,8 +80,13 @@ export default function GroupNode({
           isSelected
             ? 'bg-amber-500/10 text-amber-400'
             : 'hover:bg-white/5 text-slate-300'
-        }`}
-        style={{ paddingLeft: `${8 + node.depth * 16}px` }}
+        } ${hoverStyle} ${draggable.isDragging ? 'opacity-40' : ''}`}
+        style={{
+          paddingLeft: `${8 + node.depth * 16}px`,
+          ...(draggable.transform
+            ? { transform: `translate3d(${draggable.transform.x}px, ${draggable.transform.y}px, 0)` }
+            : {}),
+        }}
         onClick={() => {
           onSelect({ kind: 'group', id: node.group.id });
           if (!expanded && canExpand) onToggle(node.group.id);
@@ -117,6 +156,7 @@ export default function GroupNode({
               node={child}
               selection={selection}
               expandedIds={expandedIds}
+              forbiddenDropIds={forbiddenDropIds}
               onToggle={onToggle}
               onSelect={onSelect}
               onEdit={onEdit}

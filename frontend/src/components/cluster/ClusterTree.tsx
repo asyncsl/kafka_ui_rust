@@ -6,6 +6,7 @@ interface Props {
   tree: Tree;
   selection: Selection;
   expandedIds: Set<string>;
+  forbiddenDropIds: Set<string>;
   onToggle: (id: string) => void;
   onSelect: (sel: Selection) => void;
   onEditGroup: (node: GroupTreeNode) => void;
@@ -17,6 +18,7 @@ export default function ClusterTree({
   tree,
   selection,
   expandedIds,
+  forbiddenDropIds,
   onToggle,
   onSelect,
   onEditGroup,
@@ -44,6 +46,7 @@ export default function ClusterTree({
           node={node}
           selection={selection}
           expandedIds={expandedIds}
+          forbiddenDropIds={forbiddenDropIds}
           onToggle={onToggle}
           onSelect={onSelect}
           onEdit={onEditGroup}
