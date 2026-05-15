@@ -5,7 +5,7 @@ use serde_json::json;
 pub enum AppError {
     ClusterNotFound,
     TopicNotFound,
-    GroupNotFound,
+    ConsumerGroupNotFound,
     KafkaError(String),
     BadRequest(String),
 }
@@ -15,7 +15,7 @@ impl std::fmt::Display for AppError {
         match self {
             AppError::ClusterNotFound => write!(f, "Cluster not found"),
             AppError::TopicNotFound => write!(f, "Topic not found"),
-            AppError::GroupNotFound => write!(f, "Consumer group not found"),
+            AppError::ConsumerGroupNotFound => write!(f, "Consumer group not found"),
             AppError::KafkaError(msg) => write!(f, "Kafka error: {}", msg),
             AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
         }
@@ -29,7 +29,7 @@ impl IntoResponse for AppError {
         let (status, message) = match &self {
             AppError::ClusterNotFound => (StatusCode::NOT_FOUND, self.to_string()),
             AppError::TopicNotFound => (StatusCode::NOT_FOUND, self.to_string()),
-            AppError::GroupNotFound => (StatusCode::NOT_FOUND, self.to_string()),
+            AppError::ConsumerGroupNotFound => (StatusCode::NOT_FOUND, self.to_string()),
             AppError::KafkaError(_) => (StatusCode::BAD_GATEWAY, self.to_string()),
             AppError::BadRequest(_) => (StatusCode::BAD_REQUEST, self.to_string()),
         };
