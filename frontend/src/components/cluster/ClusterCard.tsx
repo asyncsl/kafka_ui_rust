@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useDraggable } from '@dnd-kit/core';
 import type { Cluster } from '../../types';
 
 interface Props {
@@ -9,10 +10,21 @@ interface Props {
 }
 
 export default function ClusterCard({ cluster, onDelete, animationDelay = 0 }: Props) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `cluster:${cluster.id}`,
+    data: { kind: 'cluster', label: cluster.name, sourceId: cluster.id },
+  });
+
   return (
     <div
-      className="glass-panel rounded-2xl p-6 glow-border group animate-fade-in-up"
-      style={{ animationDelay: `${animationDelay}s` }}
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      className={`glass-panel rounded-2xl p-6 glow-border group animate-fade-in-up ${isDragging ? 'opacity-40' : ''}`}
+      style={{
+        animationDelay: `${animationDelay}s`,
+        transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+      }}
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
