@@ -2,7 +2,26 @@ export interface Cluster {
   id: string;
   name: string;
   bootstrap_servers: string;
+  parent_group_id: string | null;
+  order: number;
 }
+
+export interface Group {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  color: string | null;
+  icon: string | null;
+  description: string | null;
+  order: number;
+}
+
+export type Selection =
+  | { kind: 'all' }
+  | { kind: 'ungrouped' }
+  | { kind: 'group'; id: string };
+
+export type ViewMode = 'direct' | 'recursive';
 
 export interface TopicInfo {
   name: string;
