@@ -1,3 +1,4 @@
+import { useDroppable } from '@dnd-kit/core';
 import type { ClusterTree as Tree, GroupTreeNode } from '../../hooks/useClusterTree';
 import type { Selection } from '../../types';
 import GroupNode from './GroupNode';
@@ -14,6 +15,48 @@ interface Props {
   onDeleteGroup: (node: GroupTreeNode) => void;
 }
 
+function VirtualRow({
+  id,
+  selected,
+  onSelect,
+  label,
+  count,
+  textClassName = 'text-slate-300',
+  chevron = '▾',
+}: {
+  id: 'drop-all' | 'drop-ungrouped';
+  selected: boolean;
+  onSelect: () => void;
+  label: string;
+  count?: number;
+  textClassName?: string;
+  chevron?: string;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id,
+    data: { kind: id === 'drop-ungrouped' ? 'ungrouped' : 'all' },
+    disabled: id === 'drop-all',
+  });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={onSelect}
+      className={`w-full text-left px-2 py-1.5 rounded-lg transition-colors ${
+        selected
+          ? 'bg-amber-500/10 text-amber-400'
+          : `hover:bg-white/5 ${textClassName}`
+      } ${isOver ? 'ring-2 ring-cyan-500/60 shadow-cyan-500/30 shadow' : ''}`}
+    >
+      <span className="mr-1">{chevron}</span>
+      {label}
+      {typeof count === 'number' && (
+        <span className="text-xs text-slate-500 font-mono-data ml-1">({count})</span>
+      )}
+    </button>
+  );
+}
+
 export default function ClusterTree({
   tree,
   selection,
@@ -27,18 +70,12 @@ export default function ClusterTree({
 }: Props) {
   return (
     <div role="tree" className="text-sm space-y-0.5">
-      <button
-        type="button"
-        onClick={() => onSelect({ kind: 'all' })}
-        className={`w-full text-left px-2 py-1.5 rounded-lg transition-colors ${
-          selection.kind === 'all'
-            ? 'bg-amber-500/10 text-amber-400'
-            : 'hover:bg-white/5 text-slate-300'
-        }`}
-      >
-        <span className="mr-1">▾</span>
-        All Clusters
-      </button>
+      <VirtualRow
+        id="drop-all"
+        selected={selection.kind === 'all'}
+        onSelect={() => onSelect({ kind: 'all' })}
+        label="All Clusters"
+      />
 
       {tree.roots.map((node, index) => (
         <GroupNode
@@ -57,18 +94,15 @@ export default function ClusterTree({
         />
       ))}
 
-      <button
-        type="button"
-        onClick={() => onSelect({ kind: 'ungrouped' })}
-        className={`w-full text-left px-2 py-1.5 rounded-lg transition-colors ${
-          selection.kind === 'ungrouped'
-            ? 'bg-amber-500/10 text-amber-400'
-            : 'hover:bg-white/5 text-slate-400'
-        }`}
-      >
-        <span className="mr-1">▸</span>
-        Ungrouped <span className="text-xs text-slate-500 font-mono-data ml-1">({tree.ungrouped.length})</span>
-      </button>
+      <VirtualRow
+        id="drop-ungrouped"
+        selected={selection.kind === 'ungrouped'}
+        onSelect={() => onSelect({ kind: 'ungrouped' })}
+        label="Ungrouped"
+        count={tree.ungrouped.length}
+        textClassName="text-slate-400"
+        chevron="▸"
+      />
     </div>
   );
 }
