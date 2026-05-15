@@ -10,13 +10,15 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { createCluster, deleteCluster, listClusters } from '../api/clusters';
+import { createCluster, deleteCluster, listClusters, moveCluster } from '../api/clusters';
 import {
   createGroup,
   deleteGroup,
   listGroups,
+  moveGroup,
   updateGroup,
 } from '../api/groups';
+import { nextOrderForAppend } from '../utils/order';
 import { useClusterTree, collectDescendantGroupIds } from '../hooks/useClusterTree';
 import type { Group, Selection, ViewMode } from '../types';
 import ClusterTree from '../components/cluster/ClusterTree';
@@ -86,9 +88,97 @@ export default function ClusterListPage() {
     setActiveDrag({ kind: data.kind, id: data.sourceId, label: data.label });
   };
 
-  const onDragEnd = (_e: DragEndEvent) => {
-    // Filled in by Tasks 22 and 23
+  type DropTarget =
+    | { kind: 'group'; id: string }
+    | { kind: 'ungrouped' }
+    | { kind: 'all' };
+
+  const parseDropTarget = (rawId: string | number | null | undefined): DropTarget | null => {
+    if (typeof rawId !== 'string') return null;
+    if (rawId === 'drop-ungrouped') return { kind: 'ungrouped' };
+    if (rawId === 'drop-all') return { kind: 'all' };
+    if (rawId.startsWith('drop-group:')) {
+      return { kind: 'group', id: rawId.slice('drop-group:'.length) };
+    }
+    return null;
+  };
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const sourceData = e.active.data.current as
+      | { kind: 'group'; sourceId: string }
+      | { kind: 'cluster'; sourceId: string }
+      | undefined;
+    if (!sourceData) {
+      setActiveDrag(null);
+      return;
+    }
+
+    const target = parseDropTarget(e.over?.id as string | undefined);
+    if (!target || target.kind === 'all') {
+      setActiveDrag(null);
+      return;
+    }
+
+    if (sourceData.kind === 'group') {
+      handleGroupDrop(sourceData.sourceId, target);
+    } else {
+      handleClusterDrop(sourceData.sourceId, target);
+    }
+
     setActiveDrag(null);
+  };
+
+  const handleGroupDrop = (sourceId: string, target: DropTarget) => {
+    if (target.kind === 'group' && target.id === sourceId) return;
+    if (forbiddenDropIds.has(target.kind === 'group' ? target.id : '__none__')) return;
+
+    const newParentId = target.kind === 'ungrouped' ? null : target.id;
+    const siblings = groups.filter((g) => g.parent_id === newParentId && g.id !== sourceId);
+    const newOrder = nextOrderForAppend(siblings.map((s) => s.order));
+
+    const prev = queryClient.getQueryData<Group[]>(['groups']) ?? [];
+    const next = prev.map((g) =>
+      g.id === sourceId ? { ...g, parent_id: newParentId, order: newOrder } : g
+    );
+    queryClient.setQueryData(['groups'], next);
+
+    moveGroup(sourceId, { parent_id: newParentId, order: newOrder })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['groups'] });
+      })
+      .catch((err) => {
+        queryClient.setQueryData(['groups'], prev);
+        queryClient.invalidateQueries({ queryKey: ['groups'] });
+        window.alert(`Failed to move group: ${extractError(err)}`);
+      });
+  };
+
+  const handleClusterDrop = (sourceId: string, target: DropTarget) => {
+    const newParentGroupId =
+      target.kind === 'ungrouped' ? null : target.kind === 'group' ? target.id : null;
+
+    const siblings = clusters.filter(
+      (c) => c.parent_group_id === newParentGroupId && c.id !== sourceId
+    );
+    const newOrder = nextOrderForAppend(siblings.map((s) => s.order));
+
+    const prev = queryClient.getQueryData<Cluster[]>(['clusters']) ?? [];
+    const next = prev.map((c) =>
+      c.id === sourceId
+        ? { ...c, parent_group_id: newParentGroupId, order: newOrder }
+        : c
+    );
+    queryClient.setQueryData(['clusters'], next);
+
+    moveCluster(sourceId, { parent_group_id: newParentGroupId, order: newOrder })
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['clusters'] });
+      })
+      .catch((err) => {
+        queryClient.setQueryData(['clusters'], prev);
+        queryClient.invalidateQueries({ queryKey: ['clusters'] });
+        window.alert(`Failed to move cluster: ${extractError(err)}`);
+      });
   };
 
   // Group modal state
