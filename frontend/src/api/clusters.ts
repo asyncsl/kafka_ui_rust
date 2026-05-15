@@ -11,3 +11,8 @@ export const createCluster = (data: {
 
 export const deleteCluster = (id: string) =>
   api.delete(`/clusters/${id}`);
+
+export const moveCluster = (
+  id: string,
+  data: { parent_group_id: string | null; order: number }
+) => api.post<Cluster>(`/clusters/${id}/move`, data).then((r) => r.data);
