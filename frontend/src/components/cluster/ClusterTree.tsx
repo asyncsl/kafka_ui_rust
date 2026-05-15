@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useDroppable } from '@dnd-kit/core';
 import type { ClusterTree as Tree, GroupTreeNode } from '../../hooks/useClusterTree';
 import type { Selection } from '../../types';
@@ -68,6 +70,8 @@ export default function ClusterTree({
   onAddChildGroup,
   onDeleteGroup,
 }: Props) {
+  const [ungroupedExpanded, setUngroupedExpanded] = useState(false);
+
   return (
     <div role="tree" className="text-sm space-y-0.5">
       <VirtualRow
@@ -97,12 +101,38 @@ export default function ClusterTree({
       <VirtualRow
         id="drop-ungrouped"
         selected={selection.kind === 'ungrouped'}
-        onSelect={() => onSelect({ kind: 'ungrouped' })}
+        onSelect={() => {
+          onSelect({ kind: 'ungrouped' });
+          setUngroupedExpanded((e) => !e);
+        }}
         label="Ungrouped"
         count={tree.ungrouped.length}
         textClassName="text-slate-400"
-        chevron="▸"
+        chevron={ungroupedExpanded ? '▾' : '▸'}
       />
+      {ungroupedExpanded && (
+        <div>
+          {tree.ungrouped.map((cluster) => (
+            <div
+              key={cluster.id}
+              role="treeitem"
+              aria-level={1}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer hover:bg-white/5 text-slate-400 transition-colors"
+              style={{ paddingLeft: '24px' }}
+            >
+              <span className="w-4 h-4 flex items-center justify-center text-slate-600 text-xs">·</span>
+              <span className="text-xs">🔌</span>
+              <Link
+                to={`/clusters/${cluster.id}/topics`}
+                className="flex-1 text-sm truncate hover:text-cyan-400 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {cluster.name}
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

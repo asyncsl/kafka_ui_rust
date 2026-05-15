@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { GroupTreeNode } from '../../hooks/useClusterTree';
 import type { Selection } from '../../types';
@@ -229,6 +230,25 @@ export default function GroupNode({
               posInSet={childIndex + 1}
               setSize={node.children.length}
             />
+          ))}
+          {node.clusters.map((cluster) => (
+            <div
+              key={cluster.id}
+              role="treeitem"
+              aria-level={node.depth + 2}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer hover:bg-white/5 text-slate-400 transition-colors"
+              style={{ paddingLeft: `${8 + (node.depth + 1) * 16}px` }}
+            >
+              <span className="w-4 h-4 flex items-center justify-center text-slate-600 text-xs">·</span>
+              <span className="text-xs">🔌</span>
+              <Link
+                to={`/clusters/${cluster.id}/topics`}
+                className="flex-1 text-sm truncate hover:text-cyan-400 transition-colors"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {cluster.name}
+              </Link>
+            </div>
           ))}
         </div>
       )}
