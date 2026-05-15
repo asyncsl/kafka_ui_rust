@@ -1,10 +1,11 @@
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
-    Json,
 };
 use regex::Regex;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use crate::error::AppError;
@@ -36,9 +37,7 @@ fn validate_name(name: &str) -> Result<String, AppError> {
 fn validate_color(color: &Option<String>) -> Result<(), AppError> {
     if let Some(c) = color {
         if !color_regex().is_match(c) {
-            return Err(AppError::BadRequest(
-                "color must match #RRGGBB".into(),
-            ));
+            return Err(AppError::BadRequest("color must match #RRGGBB".into()));
         }
     }
     Ok(())
@@ -56,9 +55,7 @@ fn validate_icon(icon: &Option<String>) -> Result<(), AppError> {
     Ok(())
 }
 
-pub async fn list_groups(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<Group>>, AppError> {
+pub async fn list_groups(State(state): State<AppState>) -> Result<Json<Vec<Group>>, AppError> {
     let groups = state.groups.read().await;
     let mut list: Vec<Group> = groups.values().cloned().collect();
     list.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.id.cmp(&b.id)));
@@ -169,8 +166,7 @@ pub async fn delete_group(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn collect_descendant_ids(groups: &HashMap<String, Group>, root_id: &str) -> std::collections::HashSet<String> {
-    use std::collections::HashSet;
+fn collect_descendant_ids(groups: &HashMap<String, Group>, root_id: &str) -> HashSet<String> {
     let mut out: HashSet<String> = HashSet::new();
     let mut stack: Vec<String> = vec![root_id.to_string()];
     while let Some(current) = stack.pop() {
@@ -207,7 +203,7 @@ pub async fn move_group(
         }
     }
 
-    let group = groups.get_mut(&id).unwrap();
+    let group = groups.get_mut(&id).ok_or(AppError::GroupNotFound)?;
     group.parent_id = req.parent_id;
     group.order = req.order;
     let updated = group.clone();
@@ -330,13 +326,10 @@ mod tests {
         .await
         .unwrap()
         .0;
-        let err = delete_group(
-            axum::extract::State(state),
-            axum::extract::Path(parent.id),
-        )
-        .await
-        .err()
-        .unwrap();
+        let err = delete_group(axum::extract::State(state), axum::extract::Path(parent.id))
+            .await
+            .err()
+            .unwrap();
         assert!(matches!(
             err,
             AppError::GroupNotEmpty {
@@ -362,12 +355,9 @@ mod tests {
         .await
         .unwrap()
         .0;
-        let status = delete_group(
-            axum::extract::State(state),
-            axum::extract::Path(g.id),
-        )
-        .await
-        .unwrap();
+        let status = delete_group(axum::extract::State(state), axum::extract::Path(g.id))
+            .await
+            .unwrap();
         assert_eq!(status, StatusCode::NO_CONTENT);
     }
 
@@ -412,6 +402,66 @@ mod tests {
         .err()
         .unwrap();
         assert!(matches!(err, AppError::CycleDetected));
+    }
+
+    #[tokio::test]
+    async fn move_group_to_self_is_cycle() {
+        let state = empty_state();
+        let g = create_group(
+            axum::extract::State(state.clone()),
+            Json(CreateGroupRequest {
+                name: "x".into(),
+                parent_id: None,
+                color: None,
+                icon: None,
+                description: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        let err = move_group(
+            axum::extract::State(state),
+            axum::extract::Path(g.id.clone()),
+            Json(MoveGroupRequest {
+                parent_id: Some(g.id),
+                order: 0,
+            }),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(matches!(err, AppError::CycleDetected));
+    }
+
+    #[tokio::test]
+    async fn move_group_to_nonexistent_parent_is_404() {
+        let state = empty_state();
+        let g = create_group(
+            axum::extract::State(state.clone()),
+            Json(CreateGroupRequest {
+                name: "x".into(),
+                parent_id: None,
+                color: None,
+                icon: None,
+                description: None,
+            }),
+        )
+        .await
+        .unwrap()
+        .0;
+        let err = move_group(
+            axum::extract::State(state),
+            axum::extract::Path(g.id),
+            Json(MoveGroupRequest {
+                parent_id: Some("does-not-exist".into()),
+                order: 0,
+            }),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(matches!(err, AppError::GroupNotFound));
     }
 
     #[tokio::test]
