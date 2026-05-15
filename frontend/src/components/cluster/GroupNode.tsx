@@ -31,6 +31,10 @@ export default function GroupNode({
   return (
     <div>
       <div
+        role="treeitem"
+        aria-expanded={canExpand ? expanded : undefined}
+        aria-selected={isSelected}
+        tabIndex={0}
         className={`group flex items-center gap-1 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
           isSelected
             ? 'bg-amber-500/10 text-amber-400'
@@ -41,9 +45,17 @@ export default function GroupNode({
           onSelect({ kind: 'group', id: node.group.id });
           if (!expanded && canExpand) onToggle(node.group.id);
         }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect({ kind: 'group', id: node.group.id });
+            if (!expanded && canExpand) onToggle(node.group.id);
+          }
+        }}
       >
         <button
           type="button"
+          aria-label={expanded ? 'Collapse' : 'Expand'}
           onClick={(e) => {
             e.stopPropagation();
             onToggle(node.group.id);

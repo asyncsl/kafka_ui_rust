@@ -1,7 +1,6 @@
-import type { ClusterTree as Tree } from '../../hooks/useClusterTree';
+import type { ClusterTree as Tree, GroupTreeNode } from '../../hooks/useClusterTree';
 import type { Selection } from '../../types';
 import GroupNode from './GroupNode';
-import type { GroupTreeNode } from '../../hooks/useClusterTree';
 
 interface Props {
   tree: Tree;
@@ -25,7 +24,7 @@ export default function ClusterTree({
   onDeleteGroup,
 }: Props) {
   return (
-    <div className="text-sm space-y-0.5">
+    <div role="tree" className="text-sm space-y-0.5">
       <button
         type="button"
         onClick={() => onSelect({ kind: 'all' })}
