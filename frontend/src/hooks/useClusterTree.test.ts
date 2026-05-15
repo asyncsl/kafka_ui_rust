@@ -78,6 +78,30 @@ describe('assembleClusterTree', () => {
     expect(tree.roots[0].children[0].depth).toBe(1);
     expect(tree.roots[0].children[0].children[0].depth).toBe(2);
   });
+
+  it('handles empty inputs', () => {
+    const tree = assembleClusterTree([], []);
+    expect(tree.roots).toEqual([]);
+    expect(tree.ungrouped).toEqual([]);
+    expect(tree.byId.size).toBe(0);
+  });
+
+  it('sorts clusters within a group by (order, id)', () => {
+    const tree = assembleClusterTree(
+      [g('A', null)],
+      [c('Z', 'A', 10), c('A', 'A', 10), c('M', 'A', 5)]
+    );
+    expect(tree.roots[0].clusters.map((c) => c.id)).toEqual(['M', 'A', 'Z']);
+  });
+
+  it('handles parent appearing after child in input', () => {
+    const tree = assembleClusterTree(
+      [g('A1', 'A'), g('A', null)],
+      []
+    );
+    expect(tree.roots).toHaveLength(1);
+    expect(tree.roots[0].children.map((c) => c.group.id)).toEqual(['A1']);
+  });
 });
 
 describe('collectDescendantClusters', () => {
@@ -89,6 +113,11 @@ describe('collectDescendantClusters', () => {
     const ids = collectDescendantClusters(tree.roots[0]).map((c) => c.id);
     expect(ids).toEqual(['top', 'nested']);
   });
+
+  it('returns empty array for leaf node', () => {
+    const tree = assembleClusterTree([g('A', null)], []);
+    expect(collectDescendantClusters(tree.roots[0])).toEqual([]);
+  });
 });
 
 describe('collectDescendantGroupIds', () => {
@@ -99,5 +128,10 @@ describe('collectDescendantGroupIds', () => {
     );
     const ids = collectDescendantGroupIds(tree.roots[0]);
     expect([...ids].sort()).toEqual(['A1', 'A1a']);
+  });
+
+  it('returns empty set for leaf node', () => {
+    const tree = assembleClusterTree([g('A', null)], []);
+    expect(collectDescendantGroupIds(tree.roots[0]).size).toBe(0);
   });
 });
