@@ -30,6 +30,8 @@ pub async fn create_cluster(
         id: id.clone(),
         name: req.name,
         bootstrap_servers: req.bootstrap_servers,
+        parent_group_id: None,
+        order: 0,
     };
     state.clusters.write().await.insert(id, cluster.clone());
     let _ = state.save().await;
