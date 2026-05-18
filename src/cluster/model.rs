@@ -23,6 +23,12 @@ pub struct MoveClusterRequest {
     pub order: i32,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateClusterRequest {
+    pub name: Option<String>,
+    pub bootstrap_servers: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -48,6 +48,31 @@ pub async fn delete_cluster(
     Ok(StatusCode::NO_CONTENT)
 }
 
+pub async fn update_cluster(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<crate::cluster::model::UpdateClusterRequest>,
+) -> Result<Json<Cluster>, AppError> {
+    let mut clusters = state.clusters.write().await;
+    let cluster = clusters.get_mut(&id).ok_or(AppError::ClusterNotFound)?;
+    if let Some(name) = req.name {
+        if name.trim().is_empty() {
+            return Err(AppError::BadRequest("name cannot be empty".to_string()));
+        }
+        cluster.name = name;
+    }
+    if let Some(bs) = req.bootstrap_servers {
+        if bs.trim().is_empty() {
+            return Err(AppError::BadRequest("bootstrap_servers cannot be empty".to_string()));
+        }
+        cluster.bootstrap_servers = bs;
+    }
+    let updated = cluster.clone();
+    drop(clusters);
+    let _ = state.save().await;
+    Ok(Json(updated))
+}
+
 pub async fn move_cluster(
     State(state): State<AppState>,
     Path(id): Path<String>,

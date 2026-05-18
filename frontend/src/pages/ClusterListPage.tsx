@@ -10,7 +10,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { createCluster, deleteCluster, listClusters, moveCluster } from '../api/clusters';
+import { createCluster, deleteCluster, listClusters, moveCluster, updateCluster } from '../api/clusters';
 import {
   createGroup,
   deleteGroup,
@@ -217,6 +217,17 @@ export default function ClusterListPage() {
     mutationFn: deleteCluster,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clusters'] });
+    },
+  });
+
+  const updateClusterMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; name: string; bootstrap_servers: string }) =>
+      updateCluster(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clusters'] });
+    },
+    onError: (e: unknown) => {
+      window.alert(`Failed to update cluster: ${extractError(e)}`);
     },
   });
 
@@ -431,6 +442,7 @@ export default function ClusterListPage() {
               viewMode={viewMode}
               onViewModeChange={setViewMode}
               onDeleteCluster={(id) => deleteClusterMutation.mutate(id)}
+              onUpdateCluster={(id, data) => updateClusterMutation.mutate({ id, ...data })}
               onOpenAddCluster={() => setShowAddCluster(true)}
             />
           </div>

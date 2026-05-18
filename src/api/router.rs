@@ -1,8 +1,8 @@
-use axum::routing::{delete, get, patch, post};
+use axum::routing::{get, patch, post};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
-use crate::cluster::handler::{create_cluster, delete_cluster, list_clusters, move_cluster};
+use crate::cluster::handler::{create_cluster, delete_cluster, list_clusters, move_cluster, update_cluster};
 use crate::consumer::handler::{
     get_consumer_group_lag_handler, list_consumer_groups_handler,
 };
@@ -17,7 +17,7 @@ use crate::topic::handler::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/clusters", get(list_clusters).post(create_cluster))
-        .route("/clusters/{id}", delete(delete_cluster))
+        .route("/clusters/{id}", patch(update_cluster).delete(delete_cluster))
         .route("/clusters/{id}/move", post(move_cluster))
         .route("/clusters/{id}/topics", get(list_topics_handler).post(create_topic_handler))
         .route("/clusters/{id}/topics/counts", post(get_topic_counts_handler))

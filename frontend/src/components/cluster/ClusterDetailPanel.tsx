@@ -9,6 +9,7 @@ interface Props {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   onDeleteCluster: (id: string) => void;
+  onUpdateCluster?: (id: string, data: { name: string; bootstrap_servers: string }) => void;
   onOpenAddCluster: () => void;
 }
 
@@ -41,6 +42,7 @@ export default function ClusterDetailPanel({
   viewMode,
   onViewModeChange,
   onDeleteCluster,
+  onUpdateCluster,
   onOpenAddCluster,
 }: Props) {
   const clusters = clustersForSelection(tree, selection, viewMode);
@@ -95,6 +97,7 @@ export default function ClusterDetailPanel({
               key={c.id}
               cluster={c}
               onDelete={onDeleteCluster}
+              onUpdate={onUpdateCluster}
               animationDelay={0.05 * idx}
             />
           ))}
